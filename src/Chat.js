@@ -35,7 +35,7 @@ function Chat() {
     setMessages((prev) => [...prev, { text: userQuestion, fromBot: false }]);
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/ask", {
+      const res = await fetch("https://xoxo95650-ai-tutor-backend.hf.space/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: userQuestion }),
