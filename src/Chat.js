@@ -35,7 +35,7 @@ function Chat() {
     setMessages((prev) => [...prev, { text: userQuestion, fromBot: false }]);
 
     try {
-      const res = await fetch("https://xoxo95650-ai-tutor-backend.hf.space/ask", {
+      const res = await fetch("http://localhost:8000/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: userQuestion }),
@@ -48,7 +48,8 @@ function Chat() {
         const data = await res.json();
         if (data.answer && data.answer.trim() !== "") {
           answerText = data.answer;
-          sources = data.sources || [];
+          // Only include meaningful sources
+          sources = (data.sources || []).filter(s => s && s.trim() && !/^\d+\.?$/.test(s));
         }
       }
 
