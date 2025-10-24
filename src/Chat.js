@@ -3,6 +3,8 @@ import React, { useState, useRef, useEffect } from "react";
 function Chat() {
   const [messages, setMessages] = useState([]); // { text, fromBot?:bool, sources?:[] }
   const [input, setInput] = useState("");
+  const [isTyping, setIsTyping] = useState(false); // typing indicator
+  const [dots, setDots] = useState(""); // for cycling dots
   const scrollRef = useRef(null);
 
   // auto-scroll when messages change
@@ -10,42 +12,57 @@ function Chat() {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // animate dots while typing
+  useEffect(() => {
+    if (!isTyping) {
+      setDots("");
+      return;
+    }
+    const interval = setInterval(() => {
+      setDots((prev) => (prev.length < 3 ? prev + "." : ""));
+    }, 500);
+    return () => clearInterval(interval);
+  }, [isTyping]);
+
   const sendMessage = async () => {
     if (!input.trim()) return;
 
-    // add user bubble
-    setMessages((prev) => [...prev, { text: input, fromBot: false }]);
+    const userQuestion = input;
+    setInput(""); // clear input immediately
+    setIsTyping(true); // start typing animation
+
+    // Add user message
+    setMessages((prev) => [...prev, { text: userQuestion, fromBot: false }]);
 
     try {
       const res = await fetch("http://127.0.0.1:8000/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: input }),
+        body: JSON.stringify({ question: userQuestion }),
       });
 
-      if (!res.ok) {
-        // server error
-        setMessages((prev) => [
-          ...prev,
-          { text: `Error: server returned ${res.status}`, fromBot: true },
-        ]);
-      } else {
+      let answerText = "Sorry, I don't have enough information to answer that question.";
+      let sources = [];
+
+      if (res.ok) {
         const data = await res.json();
-        // backend returns { answer, sources }
-        setMessages((prev) => [
-          ...prev,
-          { text: data.answer || "No answer.", fromBot: true, sources: data.sources || [] },
-        ]);
+        if (data.answer && data.answer.trim() !== "") {
+          answerText = data.answer;
+          sources = data.sources || [];
+        }
       }
+
+      // Add AI response
+      setMessages((prev) => [...prev, { text: answerText, fromBot: true, sources }]);
     } catch (err) {
       setMessages((prev) => [
         ...prev,
-        { text: "Error: Could not reach backend.", fromBot: true },
+        { text: "Sorry, I don't have enough information to answer that question.", fromBot: true },
       ]);
       console.error("Fetch error:", err);
+    } finally {
+      setIsTyping(false); // stop typing animation
     }
-
-    setInput("");
   };
 
   return (
@@ -98,6 +115,24 @@ function Chat() {
             </div>
           </div>
         ))}
+
+        {/* AI typing indicator */}
+        {isTyping && (
+          <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: "10px" }}>
+            <div
+              style={{
+                maxWidth: "80%",
+                background: "#e6e6e6",
+                padding: "10px 14px",
+                borderRadius: "14px",
+                fontStyle: "italic",
+                color: "#555",
+              }}
+            >
+              AI is typing{dots}
+            </div>
+          </div>
+        )}
 
         <div ref={scrollRef} />
       </div>
