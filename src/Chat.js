@@ -1,18 +1,16 @@
 import React, { useState, useRef, useEffect } from "react";
 
 function Chat() {
-  const [messages, setMessages] = useState([]); // { text, fromBot?:bool, sources?:[] }
+  const [messages, setMessages] = useState([]); // { text, fromBot, sources, feedbackGiven?, helpful? }
   const [input, setInput] = useState("");
-  const [isTyping, setIsTyping] = useState(false); // typing indicator
-  const [dots, setDots] = useState(""); // for cycling dots
+  const [isTyping, setIsTyping] = useState(false);
+  const [dots, setDots] = useState("");
   const scrollRef = useRef(null);
 
-  // auto-scroll when messages change
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // animate dots while typing
   useEffect(() => {
     if (!isTyping) {
       setDots("");
@@ -28,10 +26,22 @@ function Chat() {
     if (!input.trim()) return;
 
     const userQuestion = input;
-    setInput(""); // clear input immediately
-    setIsTyping(true); // start typing animation
+    setInput("");
 
-    // Add user message
+    // Quick gibberish check
+    const isGibberish =
+      !/[a-zA-Z]/.test(userQuestion) || (userQuestion.split(" ").length === 1 && userQuestion.length <= 3);
+
+    if (isGibberish) {
+      setMessages((prev) => [
+        ...prev,
+        { text: userQuestion, fromBot: false },
+        { text: "Sorry, I don't have enough information to answer that question.", fromBot: true, sources: [] },
+      ]);
+      return;
+    }
+
+    setIsTyping(true);
     setMessages((prev) => [...prev, { text: userQuestion, fromBot: false }]);
 
     try {
@@ -48,27 +58,35 @@ function Chat() {
         const data = await res.json();
         if (data.answer && data.answer.trim() !== "") {
           answerText = data.answer;
-          // Only include meaningful sources
-          sources = (data.sources || []).filter(s => s && s.trim() && !/^\d+\.?$/.test(s));
+          sources = data.sources || [];
         }
       }
 
-      // Add AI response
       setMessages((prev) => [...prev, { text: answerText, fromBot: true, sources }]);
     } catch (err) {
       setMessages((prev) => [
         ...prev,
         { text: "Sorry, I don't have enough information to answer that question.", fromBot: true },
       ]);
-      console.error("Fetch error:", err);
+      console.error(err);
     } finally {
-      setIsTyping(false); // stop typing animation
+      setIsTyping(false);
     }
+  };
+
+  // Feedback handler
+  const giveFeedback = (index, helpful) => {
+    setMessages((prev) =>
+      prev.map((m, i) =>
+        i === index ? { ...m, feedbackGiven: true, helpful } : m
+      )
+    );
+    // Optional: send feedback to backend
+    // fetch("/feedback", { method: "POST", body: JSON.stringify({ index, helpful }) })
   };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      {/* Messages area */}
       <div
         style={{
           flex: 1,
@@ -103,6 +121,7 @@ function Chat() {
             >
               <div>{m.text}</div>
 
+              {/* Sources */}
               {m.sources && m.sources.length > 0 && (
                 <div style={{ marginTop: "8px", fontSize: "0.9em", color: "#333" }}>
                   <strong>Sources:</strong>
@@ -113,11 +132,41 @@ function Chat() {
                   </ul>
                 </div>
               )}
+
+              {/* Feedback */}
+              {m.fromBot && !m.feedbackGiven && (
+                <div style={{ marginTop: "6px", display: "flex", gap: "8px", alignItems: "center" }}>
+                  <span style={{ fontSize: "0.9em", color: "#555" }}>Was this helpful?</span>
+                  <button
+                    onClick={() => giveFeedback(i, true)}
+                    style={{
+                      padding: "4px 8px",
+                      borderRadius: "4px",
+                      border: "1px solid #ccc",
+                      cursor: "pointer",
+                      background: "#f0f0f0",
+                    }}
+                  >
+                    Yes
+                  </button>
+                  <button
+                    onClick={() => giveFeedback(i, false)}
+                    style={{
+                      padding: "4px 8px",
+                      borderRadius: "4px",
+                      border: "1px solid #ccc",
+                      cursor: "pointer",
+                      background: "#f0f0f0",
+                    }}
+                  >
+                    No
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         ))}
 
-        {/* AI typing indicator */}
         {isTyping && (
           <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: "10px" }}>
             <div
