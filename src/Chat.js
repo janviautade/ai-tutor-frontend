@@ -5,7 +5,36 @@ function Chat() {
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [dots, setDots] = useState("");
+  const [loading, setLoading] = useState(true);
   const scrollRef = useRef(null);
+
+  // Load chat history on component mount
+  useEffect(() => {
+    const loadChatHistory = async () => {
+      try {
+        const response = await fetch('http://localhost:8000/chat/history');
+        if (response.ok) {
+          const data = await response.json();
+          // Convert backend format to frontend format
+          const formattedMessages = data.messages.map(msg => ({
+            id: msg.id,
+            text: msg.text,
+            fromBot: msg.fromBot,
+            sources: msg.sources || [],
+            feedbackGiven: msg.feedbackGiven || false,
+            helpful: msg.helpful
+          }));
+          setMessages(formattedMessages);
+        }
+      } catch (error) {
+        console.error('Failed to load chat history:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadChatHistory();
+  }, []);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -22,6 +51,28 @@ function Chat() {
     return () => clearInterval(interval);
   }, [isTyping]);
 
+  // Helper function to save message to backend
+  const saveMessage = async (text, fromBot, sources = []) => {
+    try {
+      const response = await fetch('http://localhost:8000/chat/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          from_bot: fromBot ? 1 : 0,
+          sources
+        })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        return data.id;
+      }
+    } catch (error) {
+      console.error('Failed to save message:', error);
+    }
+    return null;
+  };
+
   const sendMessage = async () => {
     if (!input.trim()) return;
 
@@ -33,16 +84,26 @@ function Chat() {
       !/[a-zA-Z]/.test(userQuestion) || (userQuestion.split(" ").length === 1 && userQuestion.length <= 3);
 
     if (isGibberish) {
-      setMessages((prev) => [
-        ...prev,
-        { text: userQuestion, fromBot: false },
-        { text: "Sorry, I don't have enough information to answer that question.", fromBot: true, sources: [] },
+      const userMessage = { text: userQuestion, fromBot: false };
+      const botMessage = { text: "Sorry, I don't have enough information to answer that question.", fromBot: true, sources: [] };
+
+      // Save both messages and get their IDs
+      const userId = await saveMessage(userQuestion, false);
+      const botId = await saveMessage(botMessage.text, true, botMessage.sources);
+
+      setMessages((prev) => [...prev,
+        { ...userMessage, id: userId },
+        { ...botMessage, id: botId }
       ]);
       return;
     }
 
     setIsTyping(true);
-    setMessages((prev) => [...prev, { text: userQuestion, fromBot: false }]);
+    const userMessage = { text: userQuestion, fromBot: false };
+
+    // Save user message and get ID
+    const userId = await saveMessage(userQuestion, false);
+    setMessages((prev) => [...prev, { ...userMessage, id: userId }]);
 
     try {
       const res = await fetch("http://localhost:8000/ask", {
@@ -62,12 +123,16 @@ function Chat() {
         }
       }
 
-      setMessages((prev) => [...prev, { text: answerText, fromBot: true, sources }]);
+      // Save bot message and get ID
+      const botId = await saveMessage(answerText, true, sources);
+      const botMessage = { text: answerText, fromBot: true, sources, id: botId };
+      setMessages((prev) => [...prev, botMessage]);
     } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        { text: "Sorry, I don't have enough information to answer that question.", fromBot: true },
-      ]);
+      const errorMessage = { text: "Sorry, I don't have enough information to answer that question.", fromBot: true };
+      setMessages((prev) => [...prev, errorMessage]);
+
+      // Save error message
+      await saveMessage(errorMessage.text, true);
       console.error(err);
     } finally {
       setIsTyping(false);
@@ -75,30 +140,52 @@ function Chat() {
   };
 
   // Feedback handler
-  const giveFeedback = (index, helpful) => {
+  const giveFeedback = async (index, helpful) => {
     setMessages((prev) =>
       prev.map((m, i) =>
         i === index ? { ...m, feedbackGiven: true, helpful } : m
       )
     );
-    // Optional: send feedback to backend
-    // fetch("/feedback", { method: "POST", body: JSON.stringify({ index, helpful }) })
+
+    // Send feedback to backend
+    try {
+      await fetch('http://localhost:8000/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message_id: messages[index].id, // Use the message ID from backend
+          helpful: helpful ? 1 : 0
+        })
+      });
+    } catch (error) {
+      console.error('Failed to submit feedback:', error);
+    }
   };
+
+  if (loading) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", justifyContent: "center", alignItems: "center" }}>
+        <div style={{ fontSize: "18px", color: "#666" }}>Loading chat history...</div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <div
         style={{
-          flex: 1,
+          height: "500px", // Fixed height
           overflowY: "auto",
           padding: "12px",
           border: "1px solid #ddd",
           borderRadius: "8px",
           marginBottom: "12px",
           backgroundColor: "#fafafa",
+          display: "flex",
+          flexDirection: "column",
         }}
       >
-        {messages.length === 0 && <p style={{ color: "#777" }}>Ask a question to begin...</p>}
+        {messages.length === 0 && !loading && <p style={{ color: "#777" }}>Ask a question to begin...</p>}
 
         {messages.map((m, i) => (
           <div
