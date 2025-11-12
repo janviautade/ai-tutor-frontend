@@ -7,6 +7,7 @@ function Chat() {
   const [dots, setDots] = useState("");
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef(null);
+  const messagesLengthRef = useRef(0); // Track message count for scroll behavior
 
   // Load chat history on component mount
   useEffect(() => {
@@ -36,8 +37,12 @@ function Chat() {
     loadChatHistory();
   }, []);
 
+  // Only scroll to bottom when new messages are added, not when existing messages are modified
   useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messages.length > messagesLengthRef.current) {
+      scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    messagesLengthRef.current = messages.length;
   }, [messages]);
 
   useEffect(() => {
@@ -157,6 +162,9 @@ function Chat() {
           helpful: helpful ? 1 : 0
         })
       });
+
+      // Trigger immediate dashboard refresh
+      window.dispatchEvent(new CustomEvent('feedbackSubmitted'));
     } catch (error) {
       console.error('Failed to submit feedback:', error);
     }

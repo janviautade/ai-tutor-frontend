@@ -6,25 +6,18 @@ function TeacherDashboard() {
   const [feedbackAnalytics, setFeedbackAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [lastRefresh, setLastRefresh] = useState(Date.now());
-  const [refreshing, setRefreshing] = useState(false);
-
-  // Function to refresh feedback data
+  // Function to refresh feedback data (used by auto-refresh and event listener)
   const refreshFeedbackData = async () => {
-    setRefreshing(true);
     try {
       const feedbackResponse = await fetch('http://localhost:8000/feedback/analytics');
       if (feedbackResponse.ok) {
         const feedbackData = await feedbackResponse.json();
         setFeedbackAnalytics(feedbackData);
-        setLastRefresh(Date.now());
       } else {
         console.error('Failed to fetch feedback data:', feedbackResponse.status);
       }
     } catch (error) {
       console.error('Failed to refresh feedback data:', error);
-    } finally {
-      setRefreshing(false);
     }
   };
 
@@ -75,6 +68,18 @@ function TeacherDashboard() {
     }, 30000); // 30 seconds
 
     return () => clearInterval(interval);
+  }, []);
+
+  // Listen for feedback submissions from Chat component and refresh immediately
+  useEffect(() => {
+    const handleFeedbackSubmitted = () => {
+      refreshFeedbackData();
+    };
+
+    // Listen for custom event from Chat component
+    window.addEventListener('feedbackSubmitted', handleFeedbackSubmitted);
+
+    return () => window.removeEventListener('feedbackSubmitted', handleFeedbackSubmitted);
   }, []);
   const downloadFile = (fileName) => {
     const link = document.createElement("a");
@@ -209,24 +214,7 @@ function TeacherDashboard() {
 
       {/* Feedback Analytics */}
       <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px" }}>
-          <h3 style={{ margin: "0", color: "#555" }}>AI Response Feedback</h3>
-          <button
-            onClick={refreshFeedbackData}
-            disabled={refreshing}
-            style={{
-              padding: "6px 12px",
-              borderRadius: "4px",
-              border: "1px solid #007bff",
-              backgroundColor: refreshing ? "#e9ecef" : "#fff",
-              color: refreshing ? "#6c757d" : "#007bff",
-              cursor: refreshing ? "not-allowed" : "pointer",
-              fontSize: "14px"
-            }}
-          >
-            {refreshing ? "Refreshing..." : "Refresh Data"}
-          </button>
-        </div>
+        <h3 style={{ marginBottom: "15px", color: "#555" }}>AI Response Feedback</h3>
         {feedbackAnalytics ? (
           <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
             {/* Overall Stats */}
